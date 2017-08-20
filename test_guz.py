@@ -11,32 +11,45 @@ import os
 
 
 from guz import DataStore, FILENAME
-from guz import Task
+from guz import Task, TaskList
 from guz import Arguments
 
 
+TEMP_FILENAME = "temp.pickle"
+
+def set_datastore(filename, contents):
+    ds = DataStore(filename)
+    ds.to_disk(contents) 
+
+def teardown_module(module):
+    """Cleanup temp files."""
+    if os.path.exists(TEMP_FILENAME):
+        os.remove(TEMP_FILENAME)
+    
+
 class Test_DataStore:
     
+    def setup_method(self): 
+        self._dict = {1:'task one', 2:'task two'}
+        set_datastore(TEMP_FILENAME, self._dict)
+        self.ds = DataStore(TEMP_FILENAME)
+            
     def teardown_method(self):
         """Cleanup temp files."""
-        fn = "temp.pickle"
-        if os.path.exists(fn):
-            os.remove(fn)
+        if os.path.exists(TEMP_FILENAME):
+            os.remove(TEMP_FILENAME)
     
     def test_on_production_init_directs_to_global_filename(self):        
         ds = DataStore()
         assert ds.filename == FILENAME
     
     def test_on_temp_init_directs_to_other_filename(self):        
-        ds = DataStore("temp.pickle")
-        assert ds.filename == "temp.pickle"
+        assert self.ds.filename == TEMP_FILENAME
 
     def test_on_temp_store_write_and_read_back_dictionary(self):        
-        ds = DataStore("temp.pickle")
-        __dict__ = {1:'abc'}
-        ds.to_disk(__dict__) 
-        assert ds.from_disk() == __dict__   
+        assert self.ds.from_disk() == self._dict   
 
+import io
 
 class Test_Task:
     
@@ -49,14 +62,27 @@ class Test_Task:
     def test_init_task_no_status_given(self):
         assert self.t.status == None
 
+REF_DICT = {1:Task('do this'), 2:Task('do that')}
+
+def tasklist(filename=TEMP_FILENAME, tasks_dict=REF_DICT):
+    set_datastore(filename, tasks_dict)
+    out = io.StringIO()
+    return TaskList(filename, out), out
+
+class Test_TaskList_No_Echo:
     
-# TaskList testing here    
+    def setup_method(self):
+        self.tasklist, _ = tasklist()         
+    
+    def test_tasks_attribute_is_dictionary(self):
+        self.tasklist.tasks == REF_DICT 
 
 
 class Test_Arguments:
     
     def test_list(self):
-        assert Arguments(['list']).list is True
+        arglist = ['list']
+        assert Arguments(arglist).list is True
     
     
 if __name__ == "__main__":
