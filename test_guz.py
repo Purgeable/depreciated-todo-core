@@ -83,18 +83,22 @@ class Test_Task:
 class Test_TaskListBase:
 
     def setup_method(self):
-        self.tasklist = TaskListBase({1: None, 5: None})
+        self.tasklist = TaskListBase({5: 'content 5', 1: 'content 1'})
 
-    def test_task_ids_attribute_is_list(self):
-        assert isinstance(self.tasklist.task_ids, list)
+    def test_task_ids_attribute(self):
+        assert self.tasklist.task_ids == [1, 5]        
 
-    def test_accept_task_id_success(self):
+    def test_task_items_are_read_with_bracket(self):
+        assert self.tasklist[1] == 'content 1'
+        assert self.tasklist[5] == 'content 5'
+
+    def test_is_valid_task_id_success(self):
         for n in [1, 5]:
-            self.tasklist.accept_task_id(n) is True
+            self.tasklist.is_valid_task_id(n) is True
 
-    def test_accept_task_id_fails(self):
+    def test_is_valid_task_id_fails(self):
         for k in [x for x in range(-1,10) if x not in [1,5]]:
-            self.tasklist.accept_task_id(k) is False    
+            self.tasklist.is_valid_task_id(k) is False    
 
     def test_get_max_task_id(self):
         self.tasklist.get_max_task_id() == 5
@@ -133,6 +137,7 @@ class Test_TaskList:
         self.tasklist.rebase()
         self.tasklist.tasks == {1: Task('do this'), 2: Task('do that')}
         assert self.out.getvalue() ==  with_newline('Rebased task ids')
+        self.setup_method()
 
 
 class Test_Arguments:
@@ -141,6 +146,9 @@ class Test_Arguments:
         arglist = ['list']
         assert Arguments(arglist).list is True
 
+    def test_all_args(self):
+        d = Arguments(['1', 'mark', 'done']).get_dict()
+        assert isinstance(d, dict)
 
 def empty_tasklist():
     mockfile = "mock.pickle"

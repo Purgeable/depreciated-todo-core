@@ -11,8 +11,9 @@ Usage:
   guz.py <n> as <textlines>...
   guz.py <n> mark (done  | -d)
   guz.py <n> mark (fail  | -f)
+  guz.py <n> mark (hold  | -h)
   guz.py <n> mark (doubt | -?)
-  guz.py <n> mark (wait  | -w) [<input>]
+  guz.py <n> mark (wait  | -i) [<input>]
   guz.py <n> unmark
   guz.py <n> due <datestamp>
   guz.py <n> file <filename>
@@ -43,6 +44,34 @@ from docopt import docopt
 FILENAME = 'data.pickle'
 
 
+from enum import Enum, unique
+
+@unique
+class Status(Enum):
+     Empty = ' '
+     Done = '+'
+     Failed = 'f'
+     Unclear = '?'
+     Hold = 'h'
+     WaitForInput = '>'
+     WorkInProgress = 'w' 
+
+def classify_status(args):
+    if args['-?'] or args['doubt']:
+        return Status.Unclear
+    elif args['-d'] or args['done']:
+        return Status.Done
+    elif args['-f'] or args['fail']:
+        return Status.Failed
+    elif args['-h'] or args['hold']:
+        return Status.Hold
+    elif args['-i'] or args['wait']:
+        return Status.WaitForInput
+    elif args['-g'] or args['go']:
+        return Status.WorkInProgress
+    else:
+        raise ValueError("No status")
+
 class DataStore(object):
     """Store data in a local file.
 
@@ -67,18 +96,6 @@ class DataStore(object):
         with open(self.filename, 'rb') as fp:
             return pickle.load(fp)
 
-from enum import Enum, unique
-
-@unique
-class Status(Enum):
-     Empty = ' '
-     Done = '+'
-     Failed = 'f'
-     Unclear = '?'
-     Hold = 'h'
-     Wait = '>'
-     WorkInProgress = 'w' 
-
 """todolist data structure in todo_item.go
 type Todo struct {
 	Id            int      `json:"id"`
@@ -96,18 +113,26 @@ type Todo struct {
 class Task(object):
 
     def __init__(self, subject: str):
-        self.__dict__ = dict(subject=subject, status=None)
-
+        self._dict = dict(subject=subject)
+        
     def __getattr__(self, key):
-        """Return task attibutes by name.
+        """Return task attibute by name.
 
         Example:
             Task("go to holiday").subject
         """
-        return self.__dict__[key]
+        return self._dict[key]
+
+    def __setattr__(self, key, value):
+        """Set task attibute.
+
+        Example:
+            Task("go to holiday").status = Status.Done
+        """
+        self._dict[key] = value
 
     def __eq__(self, x):
-        return bool(self.__dict__ == x.__dict__)
+        return bool(self._dict == x._dict)
 
     def __repr__(self):
         return "Task(subject='{}')".format(self.subject)
@@ -122,12 +147,12 @@ class Task(object):
 
     def __setstate__(self, x):
         """Function to work with pickle.load()"""
-        self.__dict__ = x
+        self._dict = x
 
     def __getstate__(self):
         """Function to work with pickle.dump()"""
-        return self.__dict__
-
+        return self._dict
+    
 class TaskListBase:
     """Index handling for *self.tasks*""" 
     
@@ -143,7 +168,23 @@ class TaskListBase:
         """Return highest number used as task id or 0"""
         return max(self.task_ids + [0])
 
-    def accept_task_id(self, id):
+    # EXPERIMENTAL, not used:
+        
+    def __getitem__(self, i):
+        if i in self.task_ids:
+            return self.tasks[i]
+        else:
+            raise KeyError("Index {} not in {}".format(i, self.task_ids))
+
+    def __setitem__(self, i, x):
+        if isinstance (i, int):
+            self.tasks[i]
+        else:
+            raise TypeError(i)
+
+    # END EXPERIMENTAL
+
+    def is_valid_task_id(self, id):
         return bool(id in self.task_ids)
 
     def len(self):
@@ -161,11 +202,12 @@ class TaskList(TaskListBase):
         self.tasks = {(new_id + 1): self.tasks[id]
                       for new_id, id
                       in enumerate(self.task_ids)}
-        self.echo("Rebased task ids")
         self.save()
+        self.echo("Rebased task ids")
 
     def delete_item(self, id, silent=False):
-        if self.accept_task_id(id):
+        #PROPOSAL: may be a decorator
+        if self.is_valid_task_id(id):
             del self.tasks[id]
             self.save()
             if not silent:
@@ -187,10 +229,20 @@ class TaskList(TaskListBase):
         self.echo_task(id)
 
     def replace_item(self, id, task):
-        self.tasks[id] = task
-        self.save()
-        self.echo("Task changed:")
-        self.echo_task(id)
+        #PROPOSAL: may be a decorator
+        if self.is_valid_task_id(id):
+            self.tasks[id] = task
+            self.save()
+            self.echo("Task changed:")
+            self.echo_task(id)
+        else:
+            self.echo("Task id not found: {}".format(id))
+            
+    def set_item_status(self, i, status):
+        self.tasks[i].status = status        
+        
+    def reset_item_status(self, i):
+        self.tasks[i].status = Status.Empty
 
     def save(self):
         self.store.to_disk(self.tasks)
@@ -224,8 +276,7 @@ class TaskList(TaskListBase):
 
 
 class Arguments:
-    """Convert command line arguments to variables using docopt.
-    """
+    """Convert command line arguments to variables using docopt."""
 
     def __init__(self, arglist):
         self.args = docopt(__doc__, arglist)
@@ -236,12 +287,11 @@ class Arguments:
     def __getattr__(self, key):
         return self.args[key]
 
-    @property
-    def all_args(self):
+    def get_dict(self):
         return self.args
 
     @property
-    def id(self):
+    def task_id(self):
         if self.args['<n>']:
             return int(self.args['<n>'])
 
@@ -249,7 +299,16 @@ class Arguments:
     def task(self):
         subj = " ".join(self.args['<textlines>'])
         return Task(subj)
-
+    
+    @property
+    def status(self):
+        return classify_status(self.args)
+         
+#  guz.py <n> mark (done  | -d)
+#  guz.py <n> mark (fail  | -f)
+#  guz.py <n> mark (doubt | -?)
+#  guz.py <n> mark (wait  | -i [<input>])
+#  guz.py <n> unmark
 
 def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
     args = Arguments(arglist)
@@ -262,23 +321,25 @@ def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
         tasklist.list()
     #  guz.py del <n>
     if args.__getattr__('del'):
-        tasklist.delete_item(args.id)
+        tasklist.delete_item(args.task_id)
     #  guz.py <n> as <textlines>...
     if args.__getattr__('as'):
-        tasklist.replace_item(args.id, args.task)
+        tasklist.replace_item(args.task_id, args.task)
     #  guz.py (rebase | delete) all
     if args.all:
         if args.delete:
             tasklist.delete_all()
         elif args.rebase:
             tasklist.rebase()
-    return tasklist
-
 #  guz.py <n> mark (done  | -d)
 #  guz.py <n> mark (fail  | -f)
 #  guz.py <n> mark (doubt | -?)
 #  guz.py <n> mark (wait  | -w) [<input>]
 #  guz.py <n> unmark
+    if args.mark:
+        tasklist.set_item_status(args.task_id, args.status)
+    if args.unmark:
+        tasklist.reset_item_status(args.task_id)
 
 #  guz.py <n> due <datestamp>
 #  guz.py <n> file <filename>
@@ -287,7 +348,7 @@ def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
 #  guz.py datafile [<path>]
 #  guz.py [timer] start <n>
 #  guz.py [timer] stop
-
+    return tasklist
 
 def catch_output(command_lines, file):
     """Intercept stdout stream when executing *command_lines* on *file*.
