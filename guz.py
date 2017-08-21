@@ -28,16 +28,18 @@ Options:
   -h --help     Show this screen.
 """
 
-# PROPOSAL: compile to exe
+# PROPOSAL 1: compile to exe
 
 import sys
 import os
 import pickle
+import io
+
 
 from docopt import docopt
 
 
-# PROPOSAL: change to json
+# PROPOSAL 2: change to json
 FILENAME = 'data.pickle'
 
 
@@ -65,28 +67,36 @@ class DataStore(object):
         with open(self.filename, 'rb') as fp:
             return pickle.load(fp)
 
+from enum import Enum, unique
 
-class Status(object):
-    # ENUM?
-    allowed = {'none': ' ',
-               'done': '+',
-               'wait': 'e',
-               'fail': 'f',
-               'doubt': '?'}
+@unique
+class Status(Enum):
+     Empty = ' '
+     Done = '+'
+     Failed = 'f'
+     Unclear = '?'
+     Hold = 'h'
+     Wait = '>'
+     WorkInProgress = 'w' 
 
+"""todolist data structure in todo_item.go
+type Todo struct {
+	Id            int      `json:"id"`
+	Subject       string   `json:"subject"`
+	Projects      []string `json:"projects"`
+	Contexts      []string `json:"contexts"`
+	Due           string   `json:"due"`
+	Completed     bool     `json:"completed"`
+	CompletedDate string   `json:"completedDate"`
+	Archived      bool     `json:"archived"`
+	IsPriority    bool     `json:"isPriority"`
+}
+"""
 
 class Task(object):
 
     def __init__(self, subject: str):
         self.__dict__ = dict(subject=subject, status=None)
-
-    def __setstate__(self, x):
-        """Function to work with pickle.load()"""
-        self.__dict__ = x
-
-    def __getstate__(self):
-        """Function to work with pickle.dump()"""
-        return self.__dict__
 
     def __getattr__(self, key):
         """Return task attibutes by name.
@@ -110,52 +120,67 @@ class Task(object):
         status = " "  # {'done':'x', None:" "}[self.status]
         return "{} [{}] {}".format(i, status, self)
 
+    def __setstate__(self, x):
+        """Function to work with pickle.load()"""
+        self.__dict__ = x
 
-class TaskList:
+    def __getstate__(self):
+        """Function to work with pickle.dump()"""
+        return self.__dict__
+
+class TaskListBase:
+    """Index handling for *self.tasks*""" 
+    
+    def __init__(self, _dict={}):
+        self.tasks=_dict
+    
+    @property
+    def task_ids(self):
+        """Return sorted list of integers, task ids"""
+        return sorted([x for x in self.tasks.keys() if isinstance(x, int)])
+
+    def get_max_task_id(self):
+        """Return highest number used as task id or 0"""
+        return max(self.task_ids + [0])
+
+    def accept_task_id(self, id):
+        return bool(id in self.task_ids)
+
+    def len(self):
+        return len(self.task_ids)
+
+
+class TaskList(TaskListBase):
 
     def __init__(self, path=FILENAME, out=sys.stdout):
         self.store = DataStore(path)
         self.tasks = self.store.from_disk()
         self.out = out
 
-    @property
-    def ids(self):
-        return [x for x in self.tasks.keys() if isinstance(x, int)]
-
-    def get_max_id(self):
-        return max(self.ids + [0])
-
-    def accept_id(self, id):
-        if id in self.ids:
-            return True
-        else:
-            self.echo("No such task id: {}".format(id))
-            return False
-
     def rebase(self):
         self.tasks = {(new_id + 1): self.tasks[id]
                       for new_id, id
-                      in enumerate(self.ids)}
+                      in enumerate(self.task_ids)}
         self.echo("Rebased task ids")
         self.save()
 
     def delete_item(self, id, silent=False):
-        if self.accept_id(id):
+        if self.accept_task_id(id):
             del self.tasks[id]
             self.save()
             if not silent:
                 self.echo("Deleted task {}".format(id))
         else:
-            self.echo("Cannot delete task {}".format(id))
+            self.echo("Task id not found: {}".format(id))
 
     def delete_all(self):
-        for id in self.ids:
+        for id in self.task_ids:
             self.delete_item(id, silent=True)
         self.save()
         self.echo("All tasks deleted. What made you do this?..")
 
     def add_item(self, task):
-        id = self.get_max_id() + 1
+        id = self.get_max_task_id() + 1
         self.tasks[id] = task
         self.save()
         self.echo("New task added:")
@@ -177,16 +202,13 @@ class TaskList:
         task_repr = self.tasks[id].format_with_id(id)
         print(task_repr, file=self.out)
 
-    def select_all_ids(self):
-        return sorted(self.ids)
-
     def select(self, patterns):
         def find_pattern(pat, text):
             if pat.startswith("-"):
                 return not (pat[1:] in text)
             else:
                 return pat in text
-        for id in self.ids:
+        for id in self.task_ids:
             text = str(self.tasks[id])
             flag = [True for pat in patterns if find_pattern(pat, text)]
             if flag:
@@ -194,10 +216,10 @@ class TaskList:
 
     def list(self, ids=False):
         if not ids:
-            ids = self.select_all_ids()
+            ids = self.task_ids
         for id in ids:
             self.echo_task(id)
-        msg = "Listed {} of {} tasks".format(len(ids), len(self.ids))
+        msg = "Listed {} of {} tasks".format(len(ids), len(self.task_ids))
         self.echo(msg)
 
 
@@ -267,11 +289,15 @@ def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
 #  guz.py [timer] stop
 
 
-import io
-
-
 def catch_output(command_lines, file):
     """Intercept stdout stream when executing *command_lines* on *file*.
+    
+       Args:
+           command_lines (list)
+           file (string)
+    
+       Returns:
+           Output to stdout as string.
     """
     for command_line in command_lines.split('\n'):
         arglist = command_line.split(' ')
@@ -280,21 +306,22 @@ def catch_output(command_lines, file):
     return out.getvalue()
 
 
-def catch_tasklist(command_lines, file):
-    """Execute *command_lines* on *file* and return reulting tasklist."""
-    for command_line in command_lines.split('\n'):
+def catch_tasklist(command_lines, path):
+    """Execute *command_lines* list of command strings on *file* 
+       and return resulting tasklist. Used in testing.
+       
+       Args:
+           command_lines (list)
+           file (string)
+           
+       Returns:
+           TaskList() instance           
+       """
+    for command_line in command_lines:
         arglist = command_line.split(" ")
-        result = main(arglist, file)
+        result = main(arglist, path)
     return result
 
 
 if __name__ == '__main__':
-
-    c = catch_output('delete all', file="temp.pickle")
-    assert c == 'All tasks deleted. What made you do this?..\n'
-
-    c = catch_output('del 0', file="temp.pickle")
-    assert c == 'No such task id: 0\nCannot delete task 0\n'
-
-    ta_li = catch_tasklist("delete all\nnew do this", file="temp.pickle")
-    assert ta_li.tasks[1].subject == 'do this'
+    main()
