@@ -33,10 +33,9 @@ def set_datastore(filename, contents):
 
 REF_DICT = {1: Task('do this'), 5: Task('do that')}
 
-def tasklist(filename=TEMP_FILENAME, tasks_dict=REF_DICT):
-    set_datastore(filename, tasks_dict)
+def tasklist(taskdict=REF_DICT):
     out = io.StringIO()
-    return TaskList(filename, out), out
+    return TaskList(taskdict, out), out
 
 
 def teardown_module(module):
@@ -110,8 +109,7 @@ class Test_TaskListBase:
         self.tasklist.get_max_task_id() == 5
         
     def test_len(self):
-        self.tasklist.len() == 2
-        
+        self.tasklist.len() == 2     
 
 
 class Test_TaskList:
@@ -119,9 +117,11 @@ class Test_TaskList:
     def setup_method(self):
         self.tasklist, self.out = tasklist()
 
+    def test_task_ids_attribute_repeated_test(self):
+        assert self.tasklist.task_ids == [1, 5]        
+
     def test_tasks_attribute_is_dictionary(self):
         self.tasklist.tasks == {1: Task('do this'), 5: Task('do that')}
-
         
     def test_on_list(self):
         self.tasklist.list()
@@ -156,18 +156,13 @@ class Test_Arguments:
         d = Arguments(['1', 'mark', 'done']).get_dict()
         assert isinstance(d, dict)
 
+
 def empty_tasklist():
-    mockfile = "mock.pickle"
     silent = io.StringIO()
-    mocklist = TaskList(mockfile, silent)
-    mocklist.delete_all()
-    return mocklist
+    return TaskList({}, silent)
 
 
 class Test_Behaviour_On_Adding_Deleting_and_Replacing:
-
-    def setup_method(self):
-        pass
 
     def test_multiple_commands(self):
         tasklist = empty_tasklist()
@@ -197,10 +192,11 @@ class Test_Behaviour_On_Adding_Deleting_and_Replacing:
 class Test_Catch_Output_After_Command(object):
     
     def setup_method(self):
+        DataStore(TEMP_FILENAME).to_disk({})
         self.catch_output = lambda command_line: \
-                            catch_output(command_line, file=TEMP_FILENAME)        
+                            catch_output(command_line, path=TEMP_FILENAME)        
 
-    def test_deletes_return_proper_message_strings(self):
+    def test_delete_returns_proper_message_strings(self):
         assert self.catch_output('delete all') == \
             with_newline('All tasks deleted. What made you do this?..')
 
@@ -210,8 +206,11 @@ class Test_Catch_Output_After_Command(object):
 class Test_Catch_TaskList_After_Command(object):
     
     def setup_method(self):
+        DataStore(TEMP_FILENAME).to_disk({})
         self.catch_tasklist = lambda command_list: \
-                            catch_tasklist(command_list, file=TEMP_FILENAME)        
+                            catch_tasklist(command_list, path=TEMP_FILENAME)        
+
+    def test_1(self):
         tlist = self.catch_tasklist(['delete all', 'new do this task'])
         assert tlist.tasks[1].subject == 'do this task'
 

@@ -76,7 +76,8 @@ class DataStore(object):
        Uses pickle with *self.filename* to store data."""
 
     def __init__(self, filename=FILENAME):
-        """If *filename* does not exist, writes empty dictionary to *filename*.
+        """If *filename* does not exist, 
+           writes empty dictionary to *filename*.
         """
         self.filename = filename
         if not os.path.exists(self.filename):
@@ -331,19 +332,36 @@ def action(tasklist, args):
     #  guz.py datafile [<path>]
     #  guz.py [timer] start <n>
     #  guz.py [timer] stop
+    return tasklist
+
+
+class TaskDB:
     
+    def __init__(self, file=FILENAME, out=sys.stdout):
+        self.path = file
+        self.out = out
+        taskdict = DataStore(self.path).from_disk()
+        self.tasklist = TaskList(taskdict, self.out)
+    
+    def transact(self, args):
+        self.tasklist = action(self.tasklist, args)
+    
+    def get_output(self):
+        return self.out.getvalue()
+        
+    def save(self):
+        DataStore(self.path).to_disk(self.tasklist.tasks)
+
 
 def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
     args = Arguments(arglist)
-    taskdict = DataStore(file).from_disk()
-    tasklist = TaskList(taskdict, out)
-    action(tasklist, args)
-    DataStore(file).to_disk(tasklist.tasks)
-
-
-    return tasklist
-
-def catch_output(command_lines, file):
+    db = TaskDB(file, out)
+    db.transact(args)
+    db.save
+    return db.tasklist
+    
+    
+def catch_output(command_lines, path):
     """Intercept stdout stream when executing *command_lines* on *file*.
     
        Args:
@@ -356,7 +374,7 @@ def catch_output(command_lines, file):
     for command_line in command_lines.split('\n'):
         arglist = command_line.split(' ')
         out = io.StringIO()
-        main(arglist, file, out)
+        main(arglist, path, out)
     return out.getvalue()
 
 
