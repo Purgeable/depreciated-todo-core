@@ -1,8 +1,5 @@
-"""Organise tasks with due date, text file, project and context tags.
-
-  new         Create new task description
-  list        List tasks
-  <n> command Perform command on task
+"""Organise tasks with due date, associated text file and (some of) todo.txt 
+   rules.
 
 Usage:
   guz.py new <textlines>...
@@ -30,7 +27,6 @@ Options:
 """
 
 # PROPOSAL 1: compile to exe
-
 import sys
 import os
 import pickle
@@ -70,22 +66,19 @@ def classify_status(args):
     elif args['-g'] or args['go']:
         return Status.WorkInProgress
     else:
-        raise ValueError("No status")
+        raise ValueError("No status found")
 
 class DataStore(object):
-    """Store data in a local file.
-
-       Uses pickle with *self.filename* to store data.
-
+    """Store data in a local file. Uses pickle at *self.path*.
     """
 
-    def __init__(self, filename=FILENAME):
+    def __init__(self, path=FILENAME):
         """
         If *filename* does not exist, writes empty
         dictionary to *filename*.
         """
-        self.filename = filename
-        if not os.path.exists(self.filename):
+        self.path = path
+        if not os.path.exists(self.path):
             self.to_disk({})
 
     def to_disk(self, x):
@@ -95,20 +88,6 @@ class DataStore(object):
     def from_disk(self):
         with open(self.filename, 'rb') as fp:
             return pickle.load(fp)
-
-"""todolist data structure in todo_item.go
-type Todo struct {
-	Id            int      `json:"id"`
-	Subject       string   `json:"subject"`
-	Projects      []string `json:"projects"`
-	Contexts      []string `json:"contexts"`
-	Due           string   `json:"due"`
-	Completed     bool     `json:"completed"`
-	CompletedDate string   `json:"completedDate"`
-	Archived      bool     `json:"archived"`
-	IsPriority    bool     `json:"isPriority"`
-}
-"""
 
 class Task(object):
 
@@ -304,12 +283,6 @@ class Arguments:
     def status(self):
         return classify_status(self.args)
          
-#  guz.py <n> mark (done  | -d)
-#  guz.py <n> mark (fail  | -f)
-#  guz.py <n> mark (doubt | -?)
-#  guz.py <n> mark (wait  | -i [<input>])
-#  guz.py <n> unmark
-
 def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
     args = Arguments(arglist)
     tasklist = TaskList(file, out)
@@ -386,3 +359,18 @@ def catch_tasklist(command_lines, path):
 
 if __name__ == '__main__':
     main()
+    
+# -- Reference   
+"""todolist data structure in todo_item.go
+type Todo struct {
+	Id            int      `json:"id"`
+	Subject       string   `json:"subject"`
+	Projects      []string `json:"projects"`
+	Contexts      []string `json:"contexts"`
+	Due           string   `json:"due"`
+	Completed     bool     `json:"completed"`
+	CompletedDate string   `json:"completedDate"`
+	Archived      bool     `json:"archived"`
+	IsPriority    bool     `json:"isPriority"`
+}
+"""    
