@@ -1,8 +1,5 @@
-"""Organise tasks with due date, text file, project and context tags.
-
-  new         Create new task description
-  list        List tasks
-  <n> command Perform command on task
+"""Organise tasks with due date, associated text file and (some of) todo.txt 
+   rules.
 
 Usage:
   guz.py new <textlines>...
@@ -30,9 +27,12 @@ Options:
 """
 
 # PROPOSAL 1: compile to exe
+<<<<<<< HEAD
 
 from enum import Enum, unique
 import io
+=======
+>>>>>>> origin/master
 import sys
 import os
 import pickle
@@ -69,6 +69,7 @@ def classify_status(args: dict):
     elif args['-g'] or args['go']:
         return Status.WorkInProgress
     else:
+<<<<<<< HEAD
         raise ValueError("No status defined")
 
 class DataStore(object):
@@ -78,9 +79,21 @@ class DataStore(object):
     def __init__(self, filename=FILENAME):
         """If *filename* does not exist, 
            writes empty dictionary to *filename*.
+=======
+        raise ValueError("No status found")
+
+class DataStore(object):
+    """Store data in a local file. Uses pickle at *self.path*.
+    """
+
+    def __init__(self, path=FILENAME):
         """
-        self.filename = filename
-        if not os.path.exists(self.filename):
+        If *filename* does not exist, writes empty
+        dictionary to *filename*.
+>>>>>>> origin/master
+        """
+        self.path = path
+        if not os.path.exists(self.path):
             self.to_disk({})
 
     def to_disk(self, x):
@@ -290,6 +303,7 @@ class Arguments:
     def status(self):
         return classify_status(self.args)
          
+<<<<<<< HEAD
 #  guz.py <n> mark (done  | -d)
 #  guz.py <n> mark (fail  | -f)
 #  guz.py <n> mark (doubt | -?)
@@ -298,6 +312,11 @@ class Arguments:
 
 
 def action(tasklist, args):
+=======
+def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
+    args = Arguments(arglist)
+    tasklist = TaskList(file, out)
+>>>>>>> origin/master
     #  guz.py new <textlines>...
     if args.new:
         tasklist.add_item(args.task)
@@ -398,9 +417,13 @@ def catch_tasklist(command_lines, path):
 if __name__ == '__main__':
     main()
     
+<<<<<<< HEAD
     
 # Reference ------------------------------------------------------------------- 
 
+=======
+# -- Reference   
+>>>>>>> origin/master
 """todolist data structure in todo_item.go
 type Todo struct {
 	Id            int      `json:"id"`
@@ -413,5 +436,9 @@ type Todo struct {
 	Archived      bool     `json:"archived"`
 	IsPriority    bool     `json:"isPriority"`
 }
+<<<<<<< HEAD
 """
     
+=======
+"""    
+>>>>>>> origin/master
