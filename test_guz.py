@@ -23,15 +23,19 @@ TEMP_FILENAME = "temp.pickle"
 def concat(strings):
     return ''.join([with_newline(s) for s in strings])
 
+
 def with_newline(x):
     newline = '\n'
     return '{}{}'.format(x, newline)
+
 
 def set_datastore(filename, contents):
     ds = DataStore(filename)
     ds.to_disk(contents)
 
+
 REF_DICT = {1: Task('do this'), 5: Task('do that')}
+
 
 def tasklist(taskdict=REF_DICT):
     out = io.StringIO()
@@ -91,7 +95,7 @@ class Test_TaskListBase:
         self.tasklist = TaskListBase({5: 'content 5', 1: 'content 1'})
 
     def test_task_ids_attribute(self):
-        assert self.tasklist.keys() == [1, 5]        
+        assert self.tasklist.keys() == [1, 5]
 
     def test_task_items_are_read_with_bracket(self):
         assert self.tasklist[1] == 'content 1'
@@ -102,15 +106,14 @@ class Test_TaskListBase:
             self.tasklist.is_valid_task_id(n) is True
 
     def test_is_valid_task_id_fails(self):
-        for k in [x for x in range(-1,10) if x not in [1,5]]:
-            self.tasklist.is_valid_task_id(k) is False    
+        for k in [x for x in range(-1, 10) if x not in [1, 5]]:
+            self.tasklist.is_valid_task_id(k) is False
 
     def test_append(self):
         pass
-        
+
     def test_len(self):
-        len(self.tasklist) == 2  
-        
+        len(self.tasklist) == 2
 
 
 class Test_TaskList:
@@ -120,7 +123,7 @@ class Test_TaskList:
 
     def test_tasks_attribute_is_dictionary(self):
         self.tasklist.tasks == {1: Task('do this'), 5: Task('do that')}
-        
+
     def test_on_list(self):
         self.tasklist.list()
         assert self.out.getvalue() == concat([' 1 [ ] do this',
@@ -140,7 +143,7 @@ class Test_TaskList:
     def test_on_rebase(self):
         self.tasklist.rebase()
         self.tasklist.tasks == {1: Task('do this'), 2: Task('do that')}
-        assert self.out.getvalue() ==  with_newline('Rebased task ids')
+        assert self.out.getvalue() == with_newline('Rebased task ids')
         self.setup_method()
 
 
@@ -180,20 +183,20 @@ class Test_Behaviour_On_Adding_Deleting_and_Replacing:
         # FIXME: not really replacing, adding even if not exists
         tasklist.replace_item(4, t4)
         tasklist.delete_item(1)
-        
+
         # FIXME
         #lines = [tasklist.tasks[i].subject for i in tasklist.keys()]
-        #assert lines == ['todo everything @home - to stay 1',
+        # assert lines == ['todo everything @home - to stay 1',
         #                 'other task @work - to stay 2',
         #                 'edited task 4 - to stay 3']
 
 
 class Test_Catch_Output_After_Command(object):
-    
+
     def setup_method(self):
         DataStore(TEMP_FILENAME).to_disk({})
         self.catch_output = lambda command_line: \
-                            catch_output(command_line, path=TEMP_FILENAME)        
+            catch_output(command_line, path=TEMP_FILENAME)
 
     def test_delete_returns_proper_message_strings(self):
         assert self.catch_output('delete all') == \
@@ -202,12 +205,13 @@ class Test_Catch_Output_After_Command(object):
         assert self.catch_output('del 0') == \
             with_newline('Task id not found: 0')
 
+
 class Test_Catch_TaskList_After_Command(object):
-    
+
     def setup_method(self):
         DataStore(TEMP_FILENAME).to_disk({})
         self.catch_tasklist = lambda command_list: \
-                            catch_tasklist(command_list, path=TEMP_FILENAME)        
+            catch_tasklist(command_list, path=TEMP_FILENAME)
 
     def test_1(self):
         tlist = self.catch_tasklist(['delete all', 'new do this task'])

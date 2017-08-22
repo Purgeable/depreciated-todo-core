@@ -1,4 +1,4 @@
-"""Organise tasks with due date, associated text file and (some of) todo.txt 
+"""Organise tasks with due date, associated text file and (some of) todo.txt
    rules.
 
 Usage:
@@ -43,13 +43,14 @@ FILENAME = 'data.pickle'
 
 @unique
 class Status(Enum):
-     Empty = ' '
-     Done = '+'
-     Failed = 'f'
-     Unclear = '?'
-     Hold = 'h'
-     WaitForInput = '>'
-     WorkInProgress = 'w' 
+    Empty = ' '
+    Done = '+'
+    Failed = 'f'
+    Unclear = '?'
+    Hold = 'h'
+    WaitForInput = '>'
+    WorkInProgress = 'w'
+
 
 def classify_status(args: dict):
     if args['-?'] or args['doubt']:
@@ -67,6 +68,7 @@ def classify_status(args: dict):
     else:
         raise ValueError("No status defined")
 
+
 class DataStore(object):
     """Store data in a local file. Uses pickle at *self.path*"""
 
@@ -83,17 +85,18 @@ class DataStore(object):
         with open(self.path, 'rb') as fp:
             return pickle.load(fp)
 
+
 class Task(object):
 
     def __init__(self, subject, **kwarg):
         self.__dict__['subject'] = subject
         self.status = Status.Empty
         self.update(kwarg)
-        
+
     def update(self, kwarg):
-        self.__dict__.update(kwarg)        
+        self.__dict__.update(kwarg)
         return self
-    
+
     def __getattr__(self, name):
         """Return attibute by *name*, ex:
               Task("go to holiday").subject
@@ -101,56 +104,57 @@ class Task(object):
         return self.__dict__[name]
 
     def __setattr__(self, name, value):
-        """Set attibute *name* to *value*, ex:            
+        """Set attibute *name* to *value*, ex:
               Task("go to holiday").status = Status.Done
         """
         self.__dict__[name] = value
 
     def __getstate__(self):
         return self.__dict__
-    
+
     def __setstate__(self, x):
-        self.__dict__ =  x
+        self.__dict__ = x
 
     def __eq__(self, x):
         return bool(self.__dict__ == x.__dict__)
 
-    def __repr__(self):        
+    def __repr__(self):
         msg = "Task(subject='{}')".format(self.subject)
         args = self.__dict__.copy()
         args.pop('subject')
         if args:
             return msg + ".update({})".format(args)
         else:
-            return msg 
+            return msg
 
     def __str__(self):
-        tokens = ['[{}]'.format(self.status.value), 
+        tokens = ['[{}]'.format(self.status.value),
                   self.subject]
         return ' '.join(tokens)
 
     def format_with_id(self, i):
         return "{:2d} {}".format(i, self)
-    
+
+
 class TaskListBase:
-    """Index handling for *self.tasks*""" 
-    
+    """Index handling for *self.tasks*"""
+
     def __init__(self, tasks={}):
         if isinstance(tasks, dict):
-            self.tasks=tasks
+            self.tasks = tasks
         else:
             raise TypeError(tasks)
-            
-    def new_index(self):        
+
+    def new_index(self):
         if self.keys():
             return max(self.keys()) + 1
         else:
             return 0 + 1
-        
+
     def keys(self):
         """Return sorted self.tasks keys as list of integers"""
         return sorted([x for x in self.tasks.keys() if isinstance(x, int)])
-    
+
     def is_valid_task_id(self, i):
         return bool(i in self.keys())
 
@@ -158,7 +162,7 @@ class TaskListBase:
         return len(self.tasks)
 
     # EXPERIMENTAL, not used:
-        
+
     def __getitem__(self, i):
         if self.is_valid_task_id(i):
             return self.tasks[i]
@@ -166,7 +170,7 @@ class TaskListBase:
             raise KeyError("Index {} not in {}".format(i, self.task_ids))
 
     def __setitem__(self, i, x):
-        if isinstance (i, int):
+        if isinstance(i, int):
             self.tasks[i]
         else:
             raise TypeError(i)
@@ -202,7 +206,7 @@ class TaskList(TaskListBase):
     def add_item(self, task):
         i = self.new_index()
         self.tasks[i] = task
-        self.echo("New task added:")        
+        self.echo("New task added:")
         self.echo_task(i)
 
     def replace_item(self, i, task):
@@ -212,10 +216,10 @@ class TaskList(TaskListBase):
             self.echo_task(i)
         else:
             self.echo_not_found(id)
-            
+
     def set_item_status(self, i, status):
-        self.tasks[i].status = status        
-        
+        self.tasks[i].status = status
+
     def reset_item_status(self, i):
         self.tasks[i].status = Status.Empty
 
@@ -249,6 +253,7 @@ class TaskList(TaskListBase):
         msg = "Listed {} of {} tasks".format(len(ids), len(self))
         self.echo(msg)
 
+
 class Arguments:
     """Convert command line arguments to variables using docopt."""
 
@@ -273,13 +278,14 @@ class Arguments:
     def task(self):
         subj = " ".join(self.args['<textlines>'])
         return Task(subj)
-    
+
     @property
     def status(self):
         return classify_status(self.args)
-         
+
+
 def action(tasklist, args):
-    
+
     #  guz.py new <textlines>...
     if args.new:
         tasklist.add_item(args.task)
@@ -324,19 +330,19 @@ def action(tasklist, args):
 
 
 class TaskDB:
-    
+
     def __init__(self, file=FILENAME, out=sys.stdout):
         self.path = file
         self.out = out
         taskdict = DataStore(self.path).from_disk()
         self.tasklist = TaskList(taskdict, self.out)
-    
+
     def transact(self, args):
         self.tasklist = action(self.tasklist, args)
-    
+
     def get_output(self):
         return self.out.getvalue()
-        
+
     def save(self):
         DataStore(self.path).to_disk(self.tasklist.tasks)
 
@@ -347,15 +353,15 @@ def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
     db.transact(args)
     db.save
     return db.tasklist
-    
-    
+
+
 def catch_output(command_lines, path):
     """Intercept stdout stream when executing *command_lines* on *file*.
-    
+
        Args:
            command_lines (list)
            file (string)
-    
+
        Returns:
            Output to stdout as string.
     """
@@ -367,15 +373,15 @@ def catch_output(command_lines, path):
 
 
 def catch_tasklist(command_lines, path):
-    """Execute *command_lines* list of command strings on *file* 
+    """Execute *command_lines* list of command strings on *file*
        and return resulting tasklist. Used in testing.
-       
+
        Args:
            command_lines (list)
            file (string)
-           
+
        Returns:
-           TaskList() instance           
+           TaskList() instance
        """
     for command_line in command_lines:
         arglist = command_line.split(" ")
@@ -385,7 +391,7 @@ def catch_tasklist(command_lines, path):
 
 if __name__ == '__main__':
     main()
-    
+
 
 # Reference -------------------------------------------------------------------
 
