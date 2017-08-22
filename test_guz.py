@@ -103,11 +103,11 @@ class Test_TaskListBase:
 
     def test_is_valid_task_id_success(self):
         for n in [1, 5]:
-            self.tasklist.is_valid_task_id(n) is True
+            self.tasklist.is_valid_index(n) is True
 
     def test_is_valid_task_id_fails(self):
         for k in [x for x in range(-1, 10) if x not in [1, 5]]:
-            self.tasklist.is_valid_task_id(k) is False
+            self.tasklist.is_valid_index(k) is False
 
     def test_append(self):
         pass

@@ -5,12 +5,14 @@ Usage:
   guz.py new <textlines>...
   guz.py list [<patterns>...]
   guz.py del <n>
-  guz.py <n> as <textlines>...
+  guz.py <n> as <textlines>... []
+  guz.py <n> mark (pause | -p)
+  guz.py <n> mark (doubt | -?)
+  guz.py <n> mark (wait  | -e) [<input>]
+  guz.py <n> mark (go    | -g)
   guz.py <n> mark (done  | -d)
   guz.py <n> mark (fail  | -f)
-  guz.py <n> mark (hold  | -h)
-  guz.py <n> mark (doubt | -?)
-  guz.py <n> mark (wait  | -i) [<input>]
+  guz.py <n> mark (revoked | -r)
   guz.py <n> unmark
   guz.py <n> due <datestamp>
   guz.py <n> file <filename>
@@ -44,28 +46,38 @@ FILENAME = 'data.pickle'
 @unique
 class Status(Enum):
     Empty = ' '
+    # Not doing
     Unclear = '?'
-    Hold = 'h'
-    WaitForInput = 'e'
-    WorkInProgress = 'w'
+    Pause = 'p'
+    WaitForInput = '>'
+    # Working on it
+    WorkInProgres = '.'
+    # Finished
     Done = '+'
     Failed = 'f'
+    Revoked = 'x'
+
 
 def classify_status(args: dict):
+    # Not doing
     if args['-?'] or args['doubt']:
         return Status.Unclear
+    elif args['-p'] or args['pause']:
+        return Status.Hold
+    elif args['-e'] or args['wait']:
+        return Status.WaitForInput
+    # Working on it
+    elif args['-g'] or args['go']:
+        return Status.WorkInProgres
+    # Finished
     elif args['-d'] or args['done']:
         return Status.Done
     elif args['-f'] or args['fail']:
         return Status.Failed
-    elif args['-h'] or args['hold']:
-        return Status.Hold
-    elif args['-i'] or args['wait']:
-        return Status.WaitForInput
-    elif args['-g'] or args['go']:
-        return Status.WorkInProgress
+    elif args['-r'] or args['revoke']:
+        return Status.Revoked
     else:
-        raise ValueError("No status defined")
+        raise ValueError("No status defined with {}".format(args))
 
 
 class DataStore(object):
@@ -154,7 +166,7 @@ class TaskListBase:
         """Return sorted self.tasks keys as list of integers"""
         return sorted([x for x in self.tasks.keys() if isinstance(x, int)])
 
-    def is_valid_task_id(self, i):
+    def is_valid_index(self, i):
         return bool(i in self.keys())
 
     def __len__(self):
@@ -163,7 +175,7 @@ class TaskListBase:
     # EXPERIMENTAL, not used:
 
     def __getitem__(self, i):
-        if self.is_valid_task_id(i):
+        if self.is_valid_index(i):
             return self.tasks[i]
         else:
             raise KeyError("Index {} not in {}".format(i, self.task_ids))
@@ -182,46 +194,60 @@ class TaskList(TaskListBase):
     def __init__(self, taskdict: dict, out=sys.stdout):
         self.tasks = taskdict
         self.out = out
+        self.messages = []
+        
+    def get_messages(self):        
+        return self.messages           
+
+    def add_item(self, task):
+        i = self.new_index()
+        self.tasks[i] = task
+        self.messages = ["New task added:", str(self.tasks[i])]
+        self.echo("New task added:")
+        self.echo_task(i)
+
+    def replace_item(self, i, task):
+        if self.is_valid_index(i):
+            self.tasks[i] = task
+            self.messages = ["Task changed:", str(self.tasks[i])]
+            self.echo("Task changed:")
+            self.echo_task(i)
+        else:
+            self.messages = ["Task id not found: {}".format(i)]
+            self.echo_not_found(i)
+
+    def delete_item(self, i, silent=False):
+        if self.is_valid_index(i):
+            del self.tasks[i]
+            if not silent:
+                self.messages = ["Deleted task {}".format(i)]
+                self.echo("Deleted task {}".format(i))
+        else:
+            self.messages = ["Task id not found: {}".format(i)]  
+            self.echo_not_found(i)
+
+    def delete_all(self):
+        for id in self.keys():
+            self.delete_item(id, silent=True)
+        self.messages = ["All tasks deleted. What made you do this?.."]    
+        self.echo("All tasks deleted. What made you do this?..")
 
     def rebase(self):
         self.tasks = {(new_id + 1): self.tasks[id]
                       for new_id, id
                       in enumerate(self.keys())}
+        self.messages = ["Rebased task ids"]  
         self.echo("Rebased task ids")
-
-    def delete_item(self, id, silent=False):
-        if self.is_valid_task_id(id):
-            del self.tasks[id]
-            if not silent:
-                self.echo("Deleted task {}".format(id))
-        else:
-            self.echo_not_found(id)
-
-    def delete_all(self):
-        for id in self.keys():
-            self.delete_item(id, silent=True)
-        self.echo("All tasks deleted. What made you do this?..")
-
-    def add_item(self, task):
-        i = self.new_index()
-        self.tasks[i] = task
-        self.echo("New task added:")
-        self.echo_task(i)
-
-    def replace_item(self, i, task):
-        if self.is_valid_task_id(i):
-            self.tasks[i] = task
-            self.echo("Task changed:")
-            self.echo_task(i)
-        else:
-            self.echo_not_found(id)
 
     def set_item_status(self, i, status):
         self.tasks[i].status = status
+        print('status changed')
 
     def reset_item_status(self, i):
         self.tasks[i].status = Status.Empty
+        # msg
 
+    # NOTE: may be a separate class --------------
     def echo(self, msg):
         print(msg, file=self.out)
 
@@ -231,6 +257,7 @@ class TaskList(TaskListBase):
 
     def echo_not_found(self, i):
         self.echo("Task id not found: {}".format(i))
+    #---------------------------------------------
 
     def select(self, patterns):
         def find_pattern(pat, text):
@@ -247,10 +274,23 @@ class TaskList(TaskListBase):
     def list(self, ids=False):
         if not ids:
             ids = self.keys()
-        for id in ids:
-            self.echo_task(id)
+        self.messages = []
+        for i in ids:
+            self.echo_task(i)
+            self.messages.append(self.tasks[i].format_with_id(i))            
         msg = "Listed {} of {} tasks".format(len(ids), len(self))
+        self.messages.append(msg)
         self.echo(msg)
+
+class Messenger:
+    
+    def __init__(self, tasklist, out):
+        self.messages = tasklist.get_messages()
+        self.out = out
+    
+    def print(self):
+       for msg in self.messages:
+           print(msg, file=self.out)
 
 
 class Arguments:
@@ -328,13 +368,21 @@ def action(tasklist, args):
     return tasklist
 
 
+def tasklist0():
+    taskdict = DataStore(FILENAME).from_disk()
+    return TaskList(taskdict)
+    
+
 class TaskDB:
 
     def __init__(self, file=FILENAME, out=sys.stdout):
         self.path = file
         self.out = out
-        taskdict = DataStore(self.path).from_disk()
-        self.tasklist = TaskList(taskdict, self.out)
+        self.load()
+        
+    def load(self):    
+        self.taskdict = DataStore(self.path).from_disk()
+        self.tasklist = TaskList(self.taskdict, self.out)        
 
     def transact(self, args):
         self.tasklist = action(self.tasklist, args)
@@ -343,14 +391,14 @@ class TaskDB:
         return self.out.getvalue()
 
     def save(self):
-        DataStore(self.path).to_disk(self.tasklist.tasks)
+        DataStore(self.path).to_disk(self.tasklist.tasks.copy())
 
 
 def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
     args = Arguments(arglist)
     db = TaskDB(file, out)
     db.transact(args)
-    db.save
+    db.save()
     return db.tasklist
 
 
@@ -389,6 +437,8 @@ def catch_tasklist(command_lines, path):
 
 
 if __name__ == '__main__':
+    arglist=sys.argv[1:]
+    args = Arguments(arglist)    
     main()
 
 
