@@ -27,12 +27,8 @@ Options:
 """
 
 # PROPOSAL 1: compile to exe
-<<<<<<< HEAD
-
 from enum import Enum, unique
 import io
-=======
->>>>>>> origin/master
 import sys
 import os
 import pickle
@@ -69,39 +65,22 @@ def classify_status(args: dict):
     elif args['-g'] or args['go']:
         return Status.WorkInProgress
     else:
-<<<<<<< HEAD
         raise ValueError("No status defined")
 
 class DataStore(object):
-    """Store data in a local file.
-       Uses pickle with *self.filename* to store data."""
-
-    def __init__(self, filename=FILENAME):
-        """If *filename* does not exist, 
-           writes empty dictionary to *filename*.
-=======
-        raise ValueError("No status found")
-
-class DataStore(object):
-    """Store data in a local file. Uses pickle at *self.path*.
-    """
+    """Store data in a local file. Uses pickle at *self.path*"""
 
     def __init__(self, path=FILENAME):
-        """
-        If *filename* does not exist, writes empty
-        dictionary to *filename*.
->>>>>>> origin/master
-        """
         self.path = path
         if not os.path.exists(self.path):
             self.to_disk({})
 
     def to_disk(self, x):
-        with open(self.filename, 'wb') as fp:
+        with open(self.path, 'wb') as fp:
             pickle.dump(x, fp)
 
     def from_disk(self):
-        with open(self.filename, 'rb') as fp:
+        with open(self.path, 'rb') as fp:
             return pickle.load(fp)
 
 class Task(object):
@@ -111,23 +90,19 @@ class Task(object):
         self.status = Status.Empty
         self.update(kwarg)
         
-    def update(self, _dict):
-        self.__dict__.update(_dict)        
+    def update(self, kwarg):
+        self.__dict__.update(kwarg)        
         return self
     
     def __getattr__(self, name):
-        """Return attibute by *name*.
-
-           Example:
+        """Return attibute by *name*, ex:
               Task("go to holiday").subject
         """
         return self.__dict__[name]
 
     def __setattr__(self, name, value):
-        """Set attibute *name* to *value*.
-
-           Example:
-               Task("go to holiday").status = Status.Done
+        """Set attibute *name* to *value*, ex:            
+              Task("go to holiday").status = Status.Done
         """
         self.__dict__[name] = value
 
@@ -161,21 +136,31 @@ class TaskListBase:
     """Index handling for *self.tasks*""" 
     
     def __init__(self, tasks={}):
-        self.tasks=tasks
-    
-    @property
-    def task_ids(self):
-        """Return sorted list of integers, task ids"""
+        if isinstance(tasks, dict):
+            self.tasks=tasks
+        else:
+            raise TypeError(tasks)
+            
+    def new_index(self):        
+        if self.keys():
+            return max(self.keys()) + 1
+        else:
+            return 0 + 1
+        
+    def keys(self):
+        """Return sorted self.tasks keys as list of integers"""
         return sorted([x for x in self.tasks.keys() if isinstance(x, int)])
+    
+    def is_valid_task_id(self, i):
+        return bool(i in self.keys())
 
-    def get_max_task_id(self):
-        """Return highest number used as task id or 0"""
-        return max(self.task_ids + [0])
+    def __len__(self):
+        return len(self.tasks)
 
     # EXPERIMENTAL, not used:
         
     def __getitem__(self, i):
-        if i in self.task_ids:
+        if self.is_valid_task_id(i):
             return self.tasks[i]
         else:
             raise KeyError("Index {} not in {}".format(i, self.task_ids))
@@ -188,53 +173,45 @@ class TaskListBase:
 
     # END EXPERIMENTAL
 
-    def is_valid_task_id(self, id):
-        return bool(id in self.task_ids)
-
-    def len(self):
-        return len(self.task_ids)
-
 
 class TaskList(TaskListBase):
 
-    def __init__(self, tasks: dict, out=sys.stdout):
-        self.tasks = tasks
+    def __init__(self, taskdict: dict, out=sys.stdout):
+        self.tasks = taskdict
         self.out = out
 
     def rebase(self):
         self.tasks = {(new_id + 1): self.tasks[id]
                       for new_id, id
-                      in enumerate(self.task_ids)}
+                      in enumerate(self.keys())}
         self.echo("Rebased task ids")
 
     def delete_item(self, id, silent=False):
-        #PROPOSAL: may be a decorator
         if self.is_valid_task_id(id):
             del self.tasks[id]
             if not silent:
                 self.echo("Deleted task {}".format(id))
         else:
-            self.echo("Task id not found: {}".format(id))
+            self.echo_not_found(id)
 
     def delete_all(self):
-        for id in self.task_ids:
+        for id in self.keys():
             self.delete_item(id, silent=True)
         self.echo("All tasks deleted. What made you do this?..")
 
     def add_item(self, task):
-        id = self.get_max_task_id() + 1
-        self.tasks[id] = task
-        self.echo("New task added:")
-        self.echo_task(id)
+        i = self.new_index()
+        self.tasks[i] = task
+        self.echo("New task added:")        
+        self.echo_task(i)
 
-    def replace_item(self, id, task):
-        #PROPOSAL: may be a decorator
-        if self.is_valid_task_id(id):
-            self.tasks[id] = task
+    def replace_item(self, i, task):
+        if self.is_valid_task_id(i):
+            self.tasks[i] = task
             self.echo("Task changed:")
-            self.echo_task(id)
+            self.echo_task(i)
         else:
-            self.echo("Task id not found: {}".format(id))
+            self.echo_not_found(id)
             
     def set_item_status(self, i, status):
         self.tasks[i].status = status        
@@ -245,9 +222,12 @@ class TaskList(TaskListBase):
     def echo(self, msg):
         print(msg, file=self.out)
 
-    def echo_task(self, id):
-        task_repr = self.tasks[id].format_with_id(id)
+    def echo_task(self, i):
+        task_repr = self.tasks[i].format_with_id(i)
         print(task_repr, file=self.out)
+
+    def echo_not_found(self, i):
+        self.echo("Task id not found: {}".format(i))
 
     def select(self, patterns):
         def find_pattern(pat, text):
@@ -255,24 +235,19 @@ class TaskList(TaskListBase):
                 return not (pat[1:] in text)
             else:
                 return pat in text
-        for id in self.task_ids:
-            text = str(self.tasks[id])
+        for i in self.task_ids:
+            text = str(self.tasks[i])
             flag = [True for pat in patterns if find_pattern(pat, text)]
             if flag:
                 yield id
 
     def list(self, ids=False):
         if not ids:
-            ids = self.task_ids
+            ids = self.keys()
         for id in ids:
             self.echo_task(id)
-        msg = "Listed {} of {} tasks".format(len(ids), len(self.task_ids))
+        msg = "Listed {} of {} tasks".format(len(ids), len(self))
         self.echo(msg)
-
-
-#    def save(self):
-#        self.store.to_disk(self.tasks)
-
 
 class Arguments:
     """Convert command line arguments to variables using docopt."""
@@ -303,38 +278,31 @@ class Arguments:
     def status(self):
         return classify_status(self.args)
          
-<<<<<<< HEAD
-#  guz.py <n> mark (done  | -d)
-#  guz.py <n> mark (fail  | -f)
-#  guz.py <n> mark (doubt | -?)
-#  guz.py <n> mark (wait  | -i [<input>])
-#  guz.py <n> unmark
-
-
 def action(tasklist, args):
-=======
-def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
-    args = Arguments(arglist)
-    tasklist = TaskList(file, out)
->>>>>>> origin/master
+    
     #  guz.py new <textlines>...
     if args.new:
         tasklist.add_item(args.task)
+
     #  guz.py list [<patterns>...]
     if args.list:
         tasklist.list()
+
     #  guz.py del <n>
     if args.__getattr__('del'):
         tasklist.delete_item(args.task_id)
+
     #  guz.py <n> as <textlines>...
     if args.__getattr__('as'):
         tasklist.replace_item(args.task_id, args.task)
+
     #  guz.py (rebase | delete) all
     if args.all:
         if args.delete:
             tasklist.delete_all()
         elif args.rebase:
             tasklist.rebase()
+
     #  guz.py <n> mark (done  | -d)
     #  guz.py <n> mark (fail  | -f)
     #  guz.py <n> mark (doubt | -?)
@@ -344,6 +312,7 @@ def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
         tasklist.set_item_status(args.task_id, args.status)
     if args.unmark:
         tasklist.reset_item_status(args.task_id)
+
     #  guz.py <n> due <datestamp>
     #  guz.py <n> file <filename>
     #  guz.py <n> [+<project>]...
@@ -417,13 +386,9 @@ def catch_tasklist(command_lines, path):
 if __name__ == '__main__':
     main()
     
-<<<<<<< HEAD
-    
-# Reference ------------------------------------------------------------------- 
 
-=======
-# -- Reference   
->>>>>>> origin/master
+# Reference -------------------------------------------------------------------
+
 """todolist data structure in todo_item.go
 type Todo struct {
 	Id            int      `json:"id"`
@@ -436,9 +401,4 @@ type Todo struct {
 	Archived      bool     `json:"archived"`
 	IsPriority    bool     `json:"isPriority"`
 }
-<<<<<<< HEAD
 """
-    
-=======
-"""    
->>>>>>> origin/master
