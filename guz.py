@@ -44,13 +44,12 @@ FILENAME = 'data.pickle'
 @unique
 class Status(Enum):
     Empty = ' '
-    Done = '+'
-    Failed = 'f'
     Unclear = '?'
     Hold = 'h'
-    WaitForInput = '>'
+    WaitForInput = 'e'
     WorkInProgress = 'w'
-
+    Done = '+'
+    Failed = 'f'
 
 def classify_status(args: dict):
     if args['-?'] or args['doubt']:
