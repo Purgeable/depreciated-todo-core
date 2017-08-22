@@ -12,7 +12,7 @@ import io
 
 
 from guz import DataStore, FILENAME
-from guz import Task, TaskList, TaskListBase
+from guz import Task, TaskList, TaskListBase, Status
 from guz import Arguments
 from guz import catch_output, catch_tasklist
 
@@ -73,11 +73,17 @@ class Test_Task:
     def setup_method(self):
         self.t = Task("do this")
 
-    def test_init_task_has_subject(self):
+    def test_on_init_task_has_subject(self):
         assert self.t.subject == "do this"
 
-    def test_init_task_no_status_given(self):
-        assert self.t.status is None
+    def test_on_init_task_no_status_given(self):
+        assert self.t.status == Status.Empty
+
+    def test_on_init_str_is_callable(self):
+        assert str(self.t)
+
+    def test_on_init_repr_is_callable(self):
+        assert repr(self.t)
 
 
 class Test_TaskListBase:

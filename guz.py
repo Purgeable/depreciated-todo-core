@@ -31,10 +31,11 @@ Options:
 
 # PROPOSAL 1: compile to exe
 
+from enum import Enum, unique
+import io
 import sys
 import os
 import pickle
-import io
 
 
 from docopt import docopt
@@ -43,8 +44,6 @@ from docopt import docopt
 # PROPOSAL 2: change to json
 FILENAME = 'data.pickle'
 
-
-from enum import Enum, unique
 
 @unique
 class Status(Enum):
@@ -56,7 +55,7 @@ class Status(Enum):
      WaitForInput = '>'
      WorkInProgress = 'w' 
 
-def classify_status(args):
+def classify_status(args: dict):
     if args['-?'] or args['doubt']:
         return Status.Unclear
     elif args['-d'] or args['done']:
@@ -70,19 +69,14 @@ def classify_status(args):
     elif args['-g'] or args['go']:
         return Status.WorkInProgress
     else:
-        raise ValueError("No status")
+        raise ValueError("No status defined")
 
 class DataStore(object):
     """Store data in a local file.
-
-       Uses pickle with *self.filename* to store data.
-
-    """
+       Uses pickle with *self.filename* to store data."""
 
     def __init__(self, filename=FILENAME):
-        """
-        If *filename* does not exist, writes empty
-        dictionary to *filename*.
+        """If *filename* does not exist, writes empty dictionary to *filename*.
         """
         self.filename = filename
         if not os.path.exists(self.filename):
@@ -96,68 +90,64 @@ class DataStore(object):
         with open(self.filename, 'rb') as fp:
             return pickle.load(fp)
 
-"""todolist data structure in todo_item.go
-type Todo struct {
-	Id            int      `json:"id"`
-	Subject       string   `json:"subject"`
-	Projects      []string `json:"projects"`
-	Contexts      []string `json:"contexts"`
-	Due           string   `json:"due"`
-	Completed     bool     `json:"completed"`
-	CompletedDate string   `json:"completedDate"`
-	Archived      bool     `json:"archived"`
-	IsPriority    bool     `json:"isPriority"`
-}
-"""
-
 class Task(object):
 
-    def __init__(self, subject: str):
-        self._dict = dict(subject=subject)
+    def __init__(self, subject, **kwarg):
+        self.__dict__['subject'] = subject
+        self.status = Status.Empty
+        self.update(kwarg)
         
-    def __getattr__(self, key):
-        """Return task attibute by name.
+    def update(self, _dict):
+        self.__dict__.update(_dict)        
+        return self
+    
+    def __getattr__(self, name):
+        """Return attibute by *name*.
 
-        Example:
-            Task("go to holiday").subject
+           Example:
+              Task("go to holiday").subject
         """
-        return self._dict[key]
+        return self.__dict__[name]
 
-    def __setattr__(self, key, value):
-        """Set task attibute.
+    def __setattr__(self, name, value):
+        """Set attibute *name* to *value*.
 
-        Example:
-            Task("go to holiday").status = Status.Done
+           Example:
+               Task("go to holiday").status = Status.Done
         """
-        self._dict[key] = value
-
-    def __eq__(self, x):
-        return bool(self._dict == x._dict)
-
-    def __repr__(self):
-        return "Task(subject='{}')".format(self.subject)
-
-    def __str__(self):
-        return self.subject
-
-    def format_with_id(self, id):
-        i = "{:2d}".format(id)  # see pyformat
-        status = " "  # {'done':'x', None:" "}[self.status]
-        return "{} [{}] {}".format(i, status, self)
-
-    def __setstate__(self, x):
-        """Function to work with pickle.load()"""
-        self._dict = x
+        self.__dict__[name] = value
 
     def __getstate__(self):
-        """Function to work with pickle.dump()"""
-        return self._dict
+        return self.__dict__
+    
+    def __setstate__(self, x):
+        self.__dict__ =  x
+
+    def __eq__(self, x):
+        return bool(self.__dict__ == x.__dict__)
+
+    def __repr__(self):        
+        msg = "Task(subject='{}')".format(self.subject)
+        args = self.__dict__.copy()
+        args.pop('subject')
+        if args:
+            return msg + ".update({})".format(args)
+        else:
+            return msg 
+
+    def __str__(self):
+        tokens = ['[{}]'.format(self.status.value), 
+                  self.subject]
+        return ' '.join(tokens)
+
+    def format_with_id(self, i):
+        return "{:2d} {}".format(i, self)
     
 class TaskListBase:
     """Index handling for *self.tasks*""" 
     
-    def __init__(self, _dict={}):
-        self.tasks=_dict
+    def __init__(self, tasks={}):
+        self.tasks=tasks
     
     @property
     def task_ids(self):
@@ -193,23 +183,20 @@ class TaskListBase:
 
 class TaskList(TaskListBase):
 
-    def __init__(self, path=FILENAME, out=sys.stdout):
-        self.store = DataStore(path)
-        self.tasks = self.store.from_disk()
+    def __init__(self, tasks: dict, out=sys.stdout):
+        self.tasks = tasks
         self.out = out
 
     def rebase(self):
         self.tasks = {(new_id + 1): self.tasks[id]
                       for new_id, id
                       in enumerate(self.task_ids)}
-        self.save()
         self.echo("Rebased task ids")
 
     def delete_item(self, id, silent=False):
         #PROPOSAL: may be a decorator
         if self.is_valid_task_id(id):
             del self.tasks[id]
-            self.save()
             if not silent:
                 self.echo("Deleted task {}".format(id))
         else:
@@ -218,13 +205,11 @@ class TaskList(TaskListBase):
     def delete_all(self):
         for id in self.task_ids:
             self.delete_item(id, silent=True)
-        self.save()
         self.echo("All tasks deleted. What made you do this?..")
 
     def add_item(self, task):
         id = self.get_max_task_id() + 1
         self.tasks[id] = task
-        self.save()
         self.echo("New task added:")
         self.echo_task(id)
 
@@ -232,7 +217,6 @@ class TaskList(TaskListBase):
         #PROPOSAL: may be a decorator
         if self.is_valid_task_id(id):
             self.tasks[id] = task
-            self.save()
             self.echo("Task changed:")
             self.echo_task(id)
         else:
@@ -243,9 +227,6 @@ class TaskList(TaskListBase):
         
     def reset_item_status(self, i):
         self.tasks[i].status = Status.Empty
-
-    def save(self):
-        self.store.to_disk(self.tasks)
 
     def echo(self, msg):
         print(msg, file=self.out)
@@ -273,6 +254,10 @@ class TaskList(TaskListBase):
             self.echo_task(id)
         msg = "Listed {} of {} tasks".format(len(ids), len(self.task_ids))
         self.echo(msg)
+
+
+#    def save(self):
+#        self.store.to_disk(self.tasks)
 
 
 class Arguments:
@@ -310,9 +295,8 @@ class Arguments:
 #  guz.py <n> mark (wait  | -i [<input>])
 #  guz.py <n> unmark
 
-def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
-    args = Arguments(arglist)
-    tasklist = TaskList(file, out)
+
+def action(tasklist, args):
     #  guz.py new <textlines>...
     if args.new:
         tasklist.add_item(args.task)
@@ -331,23 +315,32 @@ def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
             tasklist.delete_all()
         elif args.rebase:
             tasklist.rebase()
-#  guz.py <n> mark (done  | -d)
-#  guz.py <n> mark (fail  | -f)
-#  guz.py <n> mark (doubt | -?)
-#  guz.py <n> mark (wait  | -w) [<input>]
-#  guz.py <n> unmark
+    #  guz.py <n> mark (done  | -d)
+    #  guz.py <n> mark (fail  | -f)
+    #  guz.py <n> mark (doubt | -?)
+    #  guz.py <n> mark (wait  | -w) [<input>]
+    #  guz.py <n> unmark
     if args.mark:
         tasklist.set_item_status(args.task_id, args.status)
     if args.unmark:
         tasklist.reset_item_status(args.task_id)
+    #  guz.py <n> due <datestamp>
+    #  guz.py <n> file <filename>
+    #  guz.py <n> [+<project>]...
+    #  guz.py <n> [@<context>]...
+    #  guz.py datafile [<path>]
+    #  guz.py [timer] start <n>
+    #  guz.py [timer] stop
+    
 
-#  guz.py <n> due <datestamp>
-#  guz.py <n> file <filename>
-#  guz.py <n> [+<project>]...
-#  guz.py <n> [@<context>]...
-#  guz.py datafile [<path>]
-#  guz.py [timer] start <n>
-#  guz.py [timer] stop
+def main(arglist=sys.argv[1:], file=FILENAME, out=sys.stdout):
+    args = Arguments(arglist)
+    taskdict = DataStore(file).from_disk()
+    tasklist = TaskList(taskdict, out)
+    action(tasklist, args)
+    DataStore(file).to_disk(tasklist.tasks)
+
+
     return tasklist
 
 def catch_output(command_lines, file):
@@ -386,3 +379,21 @@ def catch_tasklist(command_lines, path):
 
 if __name__ == '__main__':
     main()
+    
+    
+# Reference ------------------------------------------------------------------- 
+
+"""todolist data structure in todo_item.go
+type Todo struct {
+	Id            int      `json:"id"`
+	Subject       string   `json:"subject"`
+	Projects      []string `json:"projects"`
+	Contexts      []string `json:"contexts"`
+	Due           string   `json:"due"`
+	Completed     bool     `json:"completed"`
+	CompletedDate string   `json:"completedDate"`
+	Archived      bool     `json:"archived"`
+	IsPriority    bool     `json:"isPriority"`
+}
+"""
+    
