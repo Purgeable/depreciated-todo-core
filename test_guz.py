@@ -8,13 +8,11 @@
 
 import pytest
 import os
-import io
-
+import pickle
 
 from guz import DataStore, FILENAME
 from guz import Task, TaskList, TaskListBase, Status
-from guz import Arguments
-from guz import catch_output, catch_tasklist
+from guz import Arguments, TaskDB, Messenger
 
 
 TEMP_FILENAME = "temp.pickle"
@@ -37,9 +35,8 @@ def set_datastore(filename, contents):
 REF_DICT = {1: Task('do this'), 5: Task('do that')}
 
 
-def tasklist(taskdict=REF_DICT):
-    out = io.StringIO()
-    return TaskList(taskdict, out), out
+def tasklist():
+    return TaskList(REF_DICT)
 
 
 def teardown_module(module):
@@ -48,15 +45,29 @@ def teardown_module(module):
         if os.path.exists(filename):
             os.remove(filename)
 
+def test_basic_testing():
+    a = {1: Task('abc')}
+    assert a == pickle.loads(pickle.dumps(a))
+    t = TaskList(a)
+    assert t == pickle.loads(pickle.dumps(t))
+    
+    fn = '1.pkl'
+    DataStore(fn).to_disk(t)
+    assert t == DataStore(fn).from_disk()
+    
+    t.list()
+    s = Messenger(t, silent=True).print().catch_output()
+    
+    assert s == ' 1 [ ] abc\nListed 1 of 1 tasks\n'
+    assert s == '\n'.join(t.get_messages() + [''])
+    
+    db = TaskDB(fn)
+    db.transact(['list'])
+    
+    Messenger(db.tasklist).print()
+
 
 class Test_DataStore:
-
-    def test_on_production_init_directs_to_global_filename(self):
-        ds = DataStore()
-        assert ds.path == FILENAME
-
-
-class Test_DataStore_with_temp_file:
 
     def setup_method(self):
         # some varialble to put and get from store
@@ -69,6 +80,10 @@ class Test_DataStore_with_temp_file:
 
     def test_on_temp_store_write_and_read_back_dictionary(self):
         assert self.ds.from_disk() == self.contents
+        
+    def test_on_production_init_directs_to_global_filename(self):
+        ds = DataStore()
+        assert ds.path == FILENAME 
 
 
 class Test_Task:
@@ -94,12 +109,12 @@ class Test_TaskListBase:
     def setup_method(self):
         self.tasklist = TaskListBase({5: 'content 5', 1: 'content 1'})
 
-    def test_task_ids_attribute(self):
-        assert self.tasklist.keys() == [1, 5]
+    def test_task_items_are_accessible(self):
+        assert self.tasklist.tasks[1] == 'content 1'
+        assert self.tasklist.tasks[5] == 'content 5'
 
-    def test_task_items_are_read_with_bracket(self):
-        assert self.tasklist[1] == 'content 1'
-        assert self.tasklist[5] == 'content 5'
+    def test_keys(self):
+        assert self.tasklist.keys() == [1, 5]
 
     def test_is_valid_task_id_success(self):
         for n in [1, 5]:
@@ -109,9 +124,6 @@ class Test_TaskListBase:
         for k in [x for x in range(-1, 10) if x not in [1, 5]]:
             self.tasklist.is_valid_index(k) is False
 
-    def test_append(self):
-        pass
-
     def test_len(self):
         len(self.tasklist) == 2
 
@@ -119,32 +131,98 @@ class Test_TaskListBase:
 class Test_TaskList:
 
     def setup_method(self):
-        self.tasklist, self.out = tasklist()
+        self.tasklist = tasklist()
 
     def test_tasks_attribute_is_dictionary(self):
         self.tasklist.tasks == {1: Task('do this'), 5: Task('do that')}
 
     def test_on_list(self):
         self.tasklist.list()
-        assert self.out.getvalue() == concat([' 1 [ ] do this',
-                                              ' 5 [ ] do that',
-                                              'Listed 2 of 2 tasks'])
+        assert self.tasklist.get_messages() == ([' 1 [ ] do this',
+                                                 ' 5 [ ] do that',
+                                                 'Listed 2 of 2 tasks'])
 
     def test_on_delete_success(self):
         self.tasklist.delete_item(1)
         assert self.tasklist.tasks == {5: Task('do that')}
-        assert self.out.getvalue() == with_newline('Deleted task 1')
+        assert self.tasklist.get_messages() == ['Deleted task 1']
         self.setup_method()
 
     def test_on_delete_failed(self):
         self.tasklist.delete_item(0)
-        assert self.out.getvalue() == with_newline('Task id not found: 0')
+        assert self.tasklist.get_messages() == ['Task id not found: 0']
 
     def test_on_rebase(self):
         self.tasklist.rebase()
         self.tasklist.tasks == {1: Task('do this'), 2: Task('do that')}
-        assert self.out.getvalue() == with_newline('Rebased task ids')
+        assert self.tasklist.get_messages() == ['Rebased task ids']
         self.setup_method()
+
+
+#FIXME
+def make_tasklist():
+    tasklist = TaskList()
+    t = Task("one task @home - to delete")
+    tasklist.add_item(t)
+    t = Task("todo everything @home - to stay as #2")
+    tasklist.add_item(t)
+    t = Task("other task @work - to stay as #3")
+    tasklist.add_item(t)
+    t = Task("other task @work - to delete")
+    tasklist.add_item(t)
+    n = max(tasklist.keys())
+    tasklist.delete_item(n)
+    t = Task("forth task - to be replaced")
+    tasklist.add_item(t)
+    t4 = Task("edited task 4 - to stay as #4")
+    tasklist.replace_item(4, t4)
+    tasklist.delete_item(1)
+    return tasklist
+
+
+class Test_TaskList_Behaviour_On_Adding_Deleting_Replacing:
+
+    def test_multiple_commands(self):      
+        tasklist = make_tasklist()
+        lines = [tasklist.tasks[i].subject for i in tasklist.keys()]
+        assert lines == ['todo everything @home - to stay as #2',
+                         'other task @work - to stay as #3',
+                         'edited task 4 - to stay as #4']
+
+class Test_Commands:
+    
+    def setup_method(self):
+        script = """delete all
+new one task @home - to delete
+new todo everything @home - to stay as #2
+new other task @work - to stay as #3
+new other task @work - to delete
+del 4
+new forth task - to be replaced
+4 as edited task 4 - to stay as #4
+del 1"""
+        self.commands = [line.split(' ') for line in script.split('\n')]
+
+    def test_commands(self):
+        os.remove(TEMP_FILENAME)
+        db = TaskDB(TEMP_FILENAME)
+        for command in self.commands:
+            #assert command == 1    
+            db.transact(command)
+        
+        assert db.tasklist.tasks == {2: Task(subject='todo everything @home - to stay as #2'), 
+                                     3: Task(subject='other task @work - to stay as #3'), 
+                                     4: Task(subject='edited task 4 - to stay as #4')}
+        
+        #make_tasklist().tasks
+    
+    def test_list(self):
+        os.remove(TEMP_FILENAME)
+        db = TaskDB(TEMP_FILENAME)
+        db.transact(['del', '0'])
+        db.transact(['list'])
+        s = Messenger(db.tasklist, silent=True).print().catch_output()
+        assert s == 'Listed 0 of 0 tasks\n'
 
 
 class Test_Arguments:
@@ -154,68 +232,8 @@ class Test_Arguments:
         assert Arguments(arglist).list is True
 
     def test_all_args(self):
-        d = Arguments(['1', 'mark', 'done']).get_dict()
-        assert isinstance(d, dict)
-
-
-def empty_tasklist():
-    silent = io.StringIO()
-    return TaskList({}, silent)
-
-
-class Test_Behaviour_On_Adding_Deleting_and_Replacing:
-
-    def test_multiple_commands(self):
-        tasklist = empty_tasklist()
-        t = Task("one task @home - to delete")
-        tasklist.add_item(t)
-        t = Task("todo everything @home - to stay 1")
-        tasklist.add_item(t)
-        t = Task("other task @work - to stay 2")
-        tasklist.add_item(t)
-        t = Task("other task @work - to delete")
-        tasklist.add_item(t)
-        n = max(tasklist.keys())
-        tasklist.delete_item(n)
-        t = Task("forth task - to be replaced")
-        tasklist.add_item(t)
-        t4 = Task("edited task 4 - to stay 3")
-        # FIXME: not really replacing, adding even if not exists
-        tasklist.replace_item(4, t4)
-        tasklist.delete_item(1)
-
-        # FIXME
-        #lines = [tasklist.tasks[i].subject for i in tasklist.keys()]
-        # assert lines == ['todo everything @home - to stay 1',
-        #                 'other task @work - to stay 2',
-        #                 'edited task 4 - to stay 3']
-
-
-class Test_Catch_Output_After_Command(object):
-
-    def setup_method(self):
-        DataStore(TEMP_FILENAME).to_disk({})
-        self.catch_output = lambda command_line: \
-            catch_output(command_line, path=TEMP_FILENAME)
-
-    def test_delete_returns_proper_message_strings(self):
-        assert self.catch_output('delete all') == \
-            with_newline('All tasks deleted. What made you do this?..')
-
-        assert self.catch_output('del 0') == \
-            with_newline('Task id not found: 0')
-
-
-class Test_Catch_TaskList_After_Command(object):
-
-    def setup_method(self):
-        DataStore(TEMP_FILENAME).to_disk({})
-        self.catch_tasklist = lambda command_list: \
-            catch_tasklist(command_list, path=TEMP_FILENAME)
-
-    def test_1(self):
-        tlist = self.catch_tasklist(['delete all', 'new do this task'])
-        assert tlist.tasks[1].subject == 'do this task'
+        d = Arguments(['1', 'mark', 'done'])
+        assert isinstance(d.args, dict)
 
 # TODO:
 #     lines = list(TaskList().select(['@work']))
