@@ -1,13 +1,14 @@
-"""Organise tasks with (some of) todo.txt rules.
+"""Organise tasks with (some of) todo.txt rules and extra features:
 
+ - configurable command line syntax (with docopt) 
+ - custom task status flags 
+ 
 Usage:
   guz.py new <textlines>...
   guz.py list [<patterns>...]
   guz.py del <n>
   guz.py <n> edit: <textlines>...
-  guz.py <n> mark (unclear | -?)
-  guz.py <n> wait [<input>]
-  guz.py <n> mark (done | fail | cancel)
+  guz.py <n> mark: (none | unclear | ready | wip | done | fail | cancel | lookafter)
   guz.py <n> unmark
   guz.py <n> project: [<+projects>...]
   guz.py (rebase | delete) all
@@ -15,9 +16,13 @@ Usage:
 
 Options:
   -h --help     Show this screen.
-"""
 
-""" For newer versions:
+TODO:
+ - compile to exe   
+ - export/import todo.txt style
+ - more commands
+ 
+  guz.py <n> wait: [<input>]
   guz.py <n> due <datestamp>
   guz.py <n> file <filename>
   guz.py datafile [<path>]
@@ -25,8 +30,6 @@ Options:
   guz.py [timer] stop
   guz.py <n> @<context> [@<context>]"""
 
-# PROPOSAL 1: compile to exe
-# PROPOSAL 2: change to json
 
 from enum import Enum, unique
 import io
@@ -94,29 +97,30 @@ class Status(Enum):
     # Not doing
     Unclear = '?'
     Hold = '>'
+    Ready = '*'
     # Working on it
     WorkInProgress = 'w'
     # Finished
     Done = '+'
-    Failed = 'f'
-    Cancelled = 'x'
+    Failed = 'x'
+    Cancelled = '/'
 
 
 def classify_status(args: dict):
     """
-  guz.py <n> mark (unclear | -?)
-  guz.py <n> wait [<input>]
-  guz.py <n> go
-  guz.py <n> mark (done | fail | cancel)
-  guz.py <n> unmark"""
+    guz.py <n> mark: (none | unclear | ready | wip | done | fail | cancel | lookafter)
+
+    """
   
     # Not doing
-    if args['-?'] or args['unclear']:
+    if args['none']:
+        return Status.Empty
+    if args['unclear']:    
         return Status.Unclear
-    elif args['wait']:
-        return Status.Hold
+    elif args['ready']:
+        return Status.Ready
     # Working on it
-    elif args['go']:
+    elif args['wip']:
         return Status.WorkInProgress
     # Finished
     elif args['done']:
@@ -125,6 +129,8 @@ def classify_status(args: dict):
         return Status.Failed
     elif args['cancel']:
         return Status.Cancelled
+    elif args['lookafter']:
+        return Status.FollowUp
     else:
         raise ValueError("No status defined by {}".format(args))
 
@@ -194,7 +200,7 @@ class Task(object):
         self.__dict__.update(kwarg)
 
     def format_with_id(self, i):
-        """Return string representation of task using index *i*"""
+        """Return string representation of task using index *i*."""
         return "{:2d} {}".format(i, str(self))
 
     def __getattr__(self, name):
@@ -226,9 +232,9 @@ class Task(object):
             # status
             '[{}]'.format(self.status.value),
             # subject
-            self.subject,
-            #projects
-            ' '.join(self.projects)]
+            self.subject]
+        if self.projects:
+            tokens.append(' '.join(self.projects))
         return ' '.join(tokens)
 
 
@@ -403,8 +409,9 @@ if __name__ == '__main__':
     try:
         tasklist = DataStore(FILENAME).from_disk()
     except FileNotFoundError:
-        tasklist = action(TaskList({}), args)
+        tasklist = TaskList({})
     tasklist = action(tasklist, args)    
+    # for use
     main()
 
 # Reference ---------------------------------
