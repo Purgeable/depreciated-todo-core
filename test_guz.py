@@ -16,6 +16,7 @@ from guz import Arguments, TaskDB, Messenger
 
 TEMP_FILENAME = "temp.pickle"
 
+
 def concat(strings):
     return ''.join([with_newline(s) for s in strings])
 
@@ -45,32 +46,33 @@ def teardown_module(module):
 
 # testing
 
+
 def test_basic_testing():
     d = {1: Task('abc')}
     t = TaskList({1: Task('abc')})
-    
+
     assert d == pickle.loads(pickle.dumps(d))
     assert t == pickle.loads(pickle.dumps(t))
-    
+
     DataStore(TEMP_FILENAME).to_disk(t)
     assert t == DataStore(TEMP_FILENAME).from_disk()
-    
+
     t.list()
-    
-    s = Messenger(t, silent=True).print().catch_output()    
+
+    s = Messenger(t, silent=True).print().catch_output()
     assert s == ' 1 [ ] abc\nListed 1 of 1 tasks\n'
     assert s == '\n'.join(t.get_messages() + [''])
-    
+
     # TODO: add transaction with save
-    
+
     db = TaskDB(TEMP_FILENAME)
-    db.transact(['list'])    
+    db.transact(['list'])
     Messenger(db.tasklist).print()
 
 
 class Test_DataStore:
 
-    def setup_method(self):        
+    def setup_method(self):
         self.contents = {'hello': 'world'}
         set_datastore(TEMP_FILENAME, self.contents)
         self.ds = DataStore(TEMP_FILENAME)
@@ -83,10 +85,10 @@ class Test_DataStore:
 
 
 class Test_Production_DataStore:
-        
+
     def test_on_init_directs_to_global_filename(self):
         ds = DataStore()
-        assert ds.path == FILENAME 
+        assert ds.path == FILENAME
         # FILENAME may or may not exist
 
 
@@ -107,7 +109,7 @@ class Test_Task:
     def test_on_init_repr_is_callable(self):
         assert repr(self.t)
 
-    def test_on_init_format_with_id_retruns_string(self):        
+    def test_on_init_format_with_id_retruns_string(self):
         assert isinstance(self.t.format_with_id(0), str)
 
 
@@ -166,10 +168,8 @@ class Test_TaskList:
         self.setup_method()
 
 
-
 class Test_TaskList_Behaviour_On_Adding_Deleting_Replacing:
-    
-    
+
     def setup_method(self):
         tasklist = TaskList()
         t = Task("one task @home - to delete")
@@ -188,44 +188,50 @@ class Test_TaskList_Behaviour_On_Adding_Deleting_Replacing:
         tasklist.replace_item(4, t4)
         tasklist.delete_item(1)
         self.tasklist = tasklist
-    
-    def test_multiple_commands(self):      
+
+    def test_multiple_commands(self):
         tasklist = self.tasklist
         lines = [tasklist.tasks[i].subject for i in tasklist.keys()]
         assert lines == ['todo everything @home - to stay as #2',
                          'other task @work - to stay as #3',
                          'edited task 4 - to stay as #4']
-        
+
+
 @pytest.fixture
 def test_db():
     os.remove(TEMP_FILENAME)
     db = TaskDB(TEMP_FILENAME)
     db.init_db()
     return db
-    
+
 
 class Test_Commands:
-    
+
     def setup_method(self):
-        self.commands = ['delete all'
-                  , 'new one task @home - to delete'
-                  , 'new todo everything @home - to stay as #2'
-                  , 'new other task @work - to stay as #3'
-                  , 'new other task @work - to delete'
-                  , 'del 4'
-                  , 'new forth task - to be replaced'
-                  , '4 edit: edited task 4 - to stay as #4'
-                  , 'del 1']
+        self.commands = [
+            'delete all',
+            'new one task @home - to delete',
+            'new todo everything @home - to stay as #2',
+            'new other task @work - to stay as #3',
+            'new other task @work - to delete',
+            'del 4',
+            'new forth task - to be replaced',
+            '4 edit: edited task 4 - to stay as #4',
+            'del 1']
 
     def test_commands_series(self, test_db):
         db = test_db
         for command in self.commands:
             db.transact(command)
-        
-        assert db.tasklist.tasks == {2: Task(subject='todo everything @home - to stay as #2'), 
-                                     3: Task(subject='other task @work - to stay as #3'), 
-                                     4: Task(subject='edited task 4 - to stay as #4')}
-    
+
+        assert db.tasklist.tasks == {
+            2: Task(
+                subject='todo everything @home - to stay as #2'),
+            3: Task(
+                subject='other task @work - to stay as #3'),
+            4: Task(
+                subject='edited task 4 - to stay as #4')}
+
     def test_list(self, test_db):
         db = test_db
         db.transact(['del', '0'])
@@ -247,6 +253,7 @@ class Test_Arguments:
 # TODO:
 #     lines = list(TaskList().select(['@work']))
 #     assert lines == ['3 other task @work - to stay 2']
+
 
 if __name__ == "__main__":
     pytest.main([__file__, '--maxfail=1'])

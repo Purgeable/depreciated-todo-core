@@ -1,16 +1,17 @@
 """Organise tasks with (some of) todo.txt rules and extra features:
 
- - configurable command line syntax (with docopt) 
- - custom task status flags 
- 
+ - configurable command line syntax (with docopt)
+ - custom task status flags
+
 Usage:
   guz.py new <textlines>...
   guz.py list [<patterns>...]
-  guz.py del <n>
-  guz.py <n> edit: <textlines>...
-  guz.py <n> mark: (none | unclear | ready | wip | done | fail | cancel | lookafter)
-  guz.py <n> unmark
-  guz.py <n> project: [<+projects>...]
+  guz.py del <n> 
+  guz.py <n> --edit <textlines>...
+  guz.py <n> --mark (unclear | ready | wip | done | fail | cancel | lookafter)
+  guz.py <n> -m     (-u      | -r    | -w  | -d   | -f   | -c     | -l       )
+  guz.py <n> --unmark
+  guz.py <n> --project [<+projects>...]
   guz.py (rebase | delete) all
   guz.py -h
 
@@ -18,10 +19,10 @@ Options:
   -h --help     Show this screen.
 
 TODO:
- - compile to exe   
+ - compile to exe
  - export/import todo.txt style
  - more commands
- 
+
   guz.py <n> wait: [<input>]
   guz.py <n> due <datestamp>
   guz.py <n> file <filename>
@@ -57,15 +58,15 @@ def action(tasklist, args):
         if args.patterns:
             ids = list(tasklist.select(args.patterns))
             tasklist.list(ids)
-        else:    
+        else:
             tasklist.list()
-            
+
     #  guz.py del <n>
     if args.__getattr__('del'):
         tasklist.delete_item(args.task_id)
 
     #  guz.py <n> change: <textlines>...
-    if args.__getattr__('edit:'):
+    if args.__getattr__('--edit'):
         tasklist.replace_item(args.task_id, args.task)
 
     #  guz.py (rebase | delete) all
@@ -75,17 +76,19 @@ def action(tasklist, args):
         elif args.rebase:
             tasklist.rebase()
 
-    #  guz.py <n> mark *
-    if args.mark:
+    #  guz.py <n> --mark *
+    if args.__getattr__('--mark'):
         tasklist.set_item_status(args.task_id, args.status)
+    # FIXME:
     if args.wait:
         tasklist.set_item_status(args.task_id, args.status)
-        tasklist.set_item_block(args.task_id, args.input)
-    if args.unmark:
+
+        #tasklist.set_item_block(args.task_id, args.input)
+    if args.__getattr__('--unmark'):
         tasklist.reset_item_status(args.task_id)
 
     #  guz.py <n> project: [<+projects>...]
-    if args.__getattr__('project:'):
+    if args.__getattr__('--project'):
         tasklist.set_item_projects(args.task_id, args.projects)
 
     return tasklist
@@ -111,11 +114,11 @@ def classify_status(args: dict):
     guz.py <n> mark: (none | unclear | ready | wip | done | fail | cancel | lookafter)
 
     """
-  
+
     # Not doing
     if args['none']:
         return Status.Empty
-    if args['unclear']:    
+    if args['unclear']:
         return Status.Unclear
     elif args['ready']:
         return Status.Ready
@@ -163,7 +166,7 @@ class Arguments:
     @property
     def status(self):
         return classify_status(self.args)
-    
+
     @property
     def projects(self):
         return self.args['<+projects>']
@@ -410,7 +413,7 @@ if __name__ == '__main__':
         tasklist = DataStore(FILENAME).from_disk()
     except FileNotFoundError:
         tasklist = TaskList({})
-    tasklist = action(tasklist, args)    
+    tasklist = action(tasklist, args)
     # for use
     main()
 
