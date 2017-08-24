@@ -6,3 +6,4 @@ Learned from:
 - topydo
 - [todo.txt-pylib](https://github.com/funkyfuture/todo.txt-pylib)
 - watson, the time tracker
+- https://gtimelog.org/
